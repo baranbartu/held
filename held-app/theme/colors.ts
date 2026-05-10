@@ -1,5 +1,6 @@
 export const colors = {
   paper: '#F1EBDD',
+  paperDeep: '#E8E0CD',
   surface: '#FAF6EC',
   ink: '#211D17',
   inkSoft: '#4A4239',
