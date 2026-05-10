@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Claude / agent local state
+.claude/
+
+# Environment files
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build outputs
+ios/
+android/
+
+# Native signing artifacts
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# TypeScript
+*.tsbuildinfo
+
+# macOS
+.DS_Store
+*.pem
+
+# IDE
+.vscode/
+.idea/
+
+# Wrangler (for future held-api/)
+.wrangler/
