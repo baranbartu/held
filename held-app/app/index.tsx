@@ -1,5 +1,6 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Gesture,
   GestureDetector,
@@ -19,58 +20,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTasks, type Task } from '@/store/tasks';
 import { colors, fonts } from '@/theme';
-
-type Task = {
-  id: string;
-  title: string;
-  when: string;
-  source: string;
-  urgent?: boolean;
-};
 
 type Section = {
   id: 'today' | 'this-week';
   title: string;
   tasks: Task[];
 };
-
-const INITIAL_TODAY: Task[] = [
-  {
-    id: '1',
-    title: 'Pick a time for your interview',
-    when: 'HR is waiting',
-    source: 'gmail · 2 days ago',
-    urgent: true,
-  },
-  {
-    id: '2',
-    title: 'Pay garbage tax — €127',
-    when: 'due in 3 weeks',
-    source: 'letter · gemeente',
-  },
-  {
-    id: '3',
-    title: 'Reply to mom about Sunday lunch',
-    when: 'she asked yesterday',
-    source: 'whatsapp',
-  },
-];
-
-const INITIAL_WEEK: Task[] = [
-  {
-    id: '4',
-    title: 'Confirm dentist appointment',
-    when: 'thursday',
-    source: 'sms',
-  },
-  {
-    id: '5',
-    title: 'Send Q2 draft to Marcus',
-    when: 'friday',
-    source: 'slack · #team',
-  },
-];
 
 const laterCount = 4;
 const todayDate = 'saturday · may 9';
@@ -93,24 +50,22 @@ function numberWord(n: number): string {
 }
 
 export default function HomeScreen() {
-  const [todayTasks, setTodayTasks] = useState<Task[]>(INITIAL_TODAY);
-  const [weekTasks, setWeekTasks] = useState<Task[]>(INITIAL_WEEK);
+  const tasks = useTasks((s) => s.tasks);
+  const dismiss = useTasks((s) => s.dismiss);
 
-  const dismiss = (id: string) => {
-    setTodayTasks((prev) => prev.filter((t) => t.id !== id));
-    setWeekTasks((prev) => prev.filter((t) => t.id !== id));
-  };
+  const today = tasks.filter((t) => t.category === 'today');
+  const week = tasks.filter((t) => t.category === 'this-week');
 
-  const isClear = todayTasks.length === 0;
+  const isClear = today.length === 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {isClear ? (
-        <ClearState weekCount={weekTasks.length} />
+        <ClearState weekCount={week.length} />
       ) : (
-        <TaskList today={todayTasks} week={weekTasks} onDone={dismiss} onSnooze={dismiss} />
+        <TaskList today={today} week={week} onDone={dismiss} onSnooze={dismiss} />
       )}
-      <AddBar />
+      <AddBar onPress={() => router.push('/add')} />
     </SafeAreaView>
   );
 }
@@ -238,14 +193,17 @@ function LaterRow({ label, num }: { label: string; num: number }) {
   );
 }
 
-function AddBar() {
+function AddBar({ onPress }: { onPress: () => void }) {
   return (
-    <View style={styles.addBar}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.addBar, pressed && styles.addBarPressed]}
+    >
       <Text style={styles.addBarText}>add something on your mind</Text>
       <View style={styles.plus}>
         <Text style={styles.plusText}>+</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -593,6 +551,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 24,
     elevation: 8,
+  },
+  addBarPressed: {
+    opacity: 0.92,
   },
   addBarText: {
     fontFamily: fonts.serif.lightItalic,
