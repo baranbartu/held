@@ -1,10 +1,20 @@
-import { useEffect } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import {
+  Gesture,
+  GestureDetector,
+  ScrollView,
+} from 'react-native-gesture-handler';
 import Animated, {
   Easing,
+  FadeOut,
+  LinearTransition,
+  interpolateColor,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,7 +35,7 @@ type Section = {
   tasks: Task[];
 };
 
-const todayTasks: Task[] = [
+const INITIAL_TODAY: Task[] = [
   {
     id: '1',
     title: 'Pick a time for your interview',
@@ -47,7 +57,7 @@ const todayTasks: Task[] = [
   },
 ];
 
-const weekTasks: Task[] = [
+const INITIAL_WEEK: Task[] = [
   {
     id: '4',
     title: 'Confirm dentist appointment',
@@ -65,35 +75,85 @@ const weekTasks: Task[] = [
 const laterCount = 4;
 const todayDate = 'saturday · may 9';
 
-// Preview toggle while everything is mocked. Flip to 'tasks' to see the
-// task list. Real implementation: derive from `todayTasks.length === 0`.
-const MODE: 'tasks' | 'clear' = 'clear';
+const WORDS = [
+  'Zero',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+];
+
+function numberWord(n: number): string {
+  return WORDS[n] ?? String(n);
+}
 
 export default function HomeScreen() {
+  const [todayTasks, setTodayTasks] = useState<Task[]>(INITIAL_TODAY);
+  const [weekTasks, setWeekTasks] = useState<Task[]>(INITIAL_WEEK);
+
+  const dismiss = (id: string) => {
+    setTodayTasks((prev) => prev.filter((t) => t.id !== id));
+    setWeekTasks((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const isClear = todayTasks.length === 0;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      {MODE === 'clear' ? <ClearState /> : <TaskList />}
+      {isClear ? (
+        <ClearState weekCount={weekTasks.length} />
+      ) : (
+        <TaskList today={todayTasks} week={weekTasks} onDone={dismiss} onSnooze={dismiss} />
+      )}
       <AddBar />
     </SafeAreaView>
   );
 }
 
-function TaskList() {
+function TaskList({
+  today,
+  week,
+  onDone,
+  onSnooze,
+}: {
+  today: Task[];
+  week: Task[];
+  onDone: (id: string) => void;
+  onSnooze: (id: string) => void;
+}) {
+  const isSingular = today.length === 1;
+  const countWord = numberWord(today.length);
+  const noun = isSingular ? 'thing' : 'things';
+  const verb = isSingular ? 'needs you' : 'need you';
+
+  let subgreeting: string;
+  if (week.length === 0) {
+    subgreeting = 'The rest can wait.';
+  } else if (week.length === 1) {
+    subgreeting = 'One more this week. The rest can wait.';
+  } else {
+    subgreeting = `${numberWord(week.length)} more this week. The rest can wait.`;
+  }
+
   const sections: Section[] = [
-    { id: 'today', title: 'Today', tasks: todayTasks },
-    { id: 'this-week', title: 'This week', tasks: weekTasks },
+    { id: 'today', title: 'Today', tasks: today },
+    ...(week.length > 0
+      ? [{ id: 'this-week' as const, title: 'This week', tasks: week }]
+      : []),
   ];
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.topMeta}>{todayDate}</Text>
       <Text style={styles.greeting}>
-        Three things <Text style={styles.greetingAccent}>need you</Text> today.
+        {countWord} {noun} <Text style={styles.greetingAccent}>{verb}</Text> today.
       </Text>
-      <Text style={styles.subgreeting}>Two more this week. The rest can wait.</Text>
+      <Text style={styles.subgreeting}>{subgreeting}</Text>
 
       {sections.map((section, idx) => (
         <View key={section.id}>
@@ -103,7 +163,13 @@ function TaskList() {
             first={idx === 0}
           />
           {section.tasks.map((task, i) => (
-            <TaskRow key={task.id} task={task} last={i === section.tasks.length - 1} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              last={i === section.tasks.length - 1}
+              onDone={onDone}
+              onSnooze={onSnooze}
+            />
           ))}
         </View>
       ))}
@@ -113,7 +179,7 @@ function TaskList() {
   );
 }
 
-function ClearState() {
+function ClearState({ weekCount }: { weekCount: number }) {
   return (
     <View style={styles.clearContainer}>
       <Text style={styles.topMeta}>{todayDate}</Text>
@@ -128,7 +194,7 @@ function ClearState() {
       <BreathingDot />
 
       <View style={styles.laterSummary}>
-        <LaterRow label="waiting this week" num={weekTasks.length} />
+        <LaterRow label="waiting this week" num={weekCount} />
         <LaterRow label="waiting later" num={laterCount} />
         <Text style={styles.laterPromise}>
           we&apos;ll let you know when something needs you.
@@ -208,16 +274,105 @@ function SectionHead({
   );
 }
 
-function TaskRow({ task, last }: { task: Task; last: boolean }) {
+function TaskRow({
+  task,
+  last,
+  onDone,
+  onSnooze,
+}: {
+  task: Task;
+  last: boolean;
+  onDone: (id: string) => void;
+  onSnooze: (id: string) => void;
+}) {
+  const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const doneProgress = useSharedValue(0);
+  const [titleWidth, setTitleWidth] = useState(0);
+
+  const tap = Gesture.Tap().onEnd((_e, success) => {
+    'worklet';
+    if (!success) return;
+    doneProgress.value = withTiming(
+      1,
+      { duration: 260, easing: Easing.out(Easing.ease) },
+      (strikeDone) => {
+        if (strikeDone) {
+          opacity.value = withTiming(
+            0,
+            { duration: 220, easing: Easing.in(Easing.ease) },
+            (fadeDone) => {
+              if (fadeDone) {
+                runOnJS(onDone)(task.id);
+              }
+            }
+          );
+        }
+      }
+    );
+  });
+
+  const pan = Gesture.Pan()
+    .activeOffsetX(20)
+    .failOffsetY([-12, 12])
+    .onChange((e) => {
+      'worklet';
+      if (e.translationX > 0) {
+        translateX.value = e.translationX;
+      }
+    })
+    .onEnd((e) => {
+      'worklet';
+      if (e.translationX > 100) {
+        translateX.value = withTiming(440, { duration: 220 });
+        opacity.value = withTiming(0, { duration: 220 }, (finished) => {
+          if (finished) {
+            runOnJS(onSnooze)(task.id);
+          }
+        });
+      } else {
+        translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
+      }
+    });
+
+  const gesture = Gesture.Exclusive(pan, tap);
+
+  const rowStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: opacity.value,
+  }));
+
+  const titleColorStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(doneProgress.value, [0, 1], [colors.ink, colors.done]),
+  }));
+
+  const strikeStyle = useAnimatedStyle(() => ({
+    width: titleWidth * doneProgress.value,
+  }));
+
   return (
-    <View style={[styles.task, !last && styles.taskBorder]}>
-      <Text style={styles.taskTitle}>{task.title}</Text>
-      <View style={styles.taskMeta}>
-        <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{task.when}</Text>
-        <View style={styles.dot} />
-        <Text style={styles.source}>{task.source}</Text>
-      </View>
-    </View>
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[styles.task, !last && styles.taskBorder, rowStyle]}
+        layout={LinearTransition.duration(260)}
+        exiting={FadeOut.duration(180)}
+      >
+        <View style={styles.titleWrap}>
+          <Animated.Text
+            style={[styles.taskTitle, titleColorStyle]}
+            onLayout={(e) => setTitleWidth(e.nativeEvent.layout.width)}
+          >
+            {task.title}
+          </Animated.Text>
+          <Animated.View style={[styles.strikeBar, strikeStyle]} pointerEvents="none" />
+        </View>
+        <View style={styles.taskMeta}>
+          <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{task.when}</Text>
+          <View style={styles.dot} />
+          <Text style={styles.source}>{task.source}</Text>
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -291,13 +446,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.hairline,
   },
+  titleWrap: {
+    alignSelf: 'flex-start',
+    position: 'relative',
+    marginBottom: 8,
+  },
   taskTitle: {
     fontFamily: fonts.serif.regular,
     fontSize: 17,
     lineHeight: 23,
     letterSpacing: -0.1,
     color: colors.ink,
-    marginBottom: 8,
+  },
+  strikeBar: {
+    position: 'absolute',
+    top: 11,
+    left: 0,
+    height: 1,
+    backgroundColor: colors.done,
   },
   taskMeta: {
     flexDirection: 'row',
