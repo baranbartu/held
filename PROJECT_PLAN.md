@@ -16,11 +16,13 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] Tap to mark done (strike-through animation, fade-out, reflow)
 - [x] Swipe to snooze (just hides the item for v1; no scheduling yet)
 - [x] Wire empty state to real data condition (`todayTasks.length === 0`)
-- [x] Add flow: single text input "what's on your mind?"
+- [x] Add flow: single text input "what's on your mind?" with deadline picker (today / tomorrow / custom date)
+- [x] Switch hardcoded header date to live date with `date-fns`
+- [x] Undo for accidental taps — 5-second soft-delete window with an undo bar above the add bar
+- [x] Normalize task shape — every task has the same fields; "when" text is derived from `deadline` or `addedAt`
 - [ ] Item detail view ("where this came from")
 - [ ] Daily local notification at user-set time, default 8am
 - [ ] MMKV local storage (requires moving off Expo Go to a dev client)
-- [ ] Switch hardcoded header date to live date with `date-fns`
 
 **Out of scope (deferred):**
 - Backend / API
@@ -81,13 +83,17 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] Greeting / subgreeting copy generates from live counts ("Three things need you today." → "One thing…" → empty state)
 - [x] `GestureHandlerRootView` wrapped at app root
 - [x] Zustand store (`store/tasks.ts`) holding unified task list with category field
-- [x] Add screen (`app/add.tsx`) — iOS-style modal, paper background, Fraunces text input, "we'll figure out the rest." assurance line
+- [x] Add screen (`app/add.tsx`) — iOS-style modal, paper background, Fraunces text input
 - [x] Add bar on home is now `Pressable`, navigates to `/add`
+- [x] Normalized `Task` shape — title / deadline / addedAt / source / urgent / category / dismissed
+- [x] `helpers/dates.ts` with `formatWhen`, `formatTodayHeader`, `formatTodayName` (date-fns)
+- [x] Deadline picker on add screen — today/tomorrow pills + `@react-native-community/datetimepicker` for custom dates; iOS inline spinner, Android system dialog
+- [x] Undo with 5s window — soft-delete in store, undo bar above add bar, supersession of older pending dismisses
+- [x] Live header date and `Go enjoy your {day}.` empty-state hint
 
 **Next up (this session or the next):**
-- [ ] User reviews add flow on device, flags anything off
-- [ ] Item detail view ("where this came from") — tap a task in non-done mode? Or different gesture?
-- [ ] Switch hardcoded date to live, with `date-fns` formatting
+- [ ] User reviews data consistency + add deadline picker + undo on device, flags anything off
+- [ ] Item detail view ("where this came from") — needs a non-conflicting gesture since tap is mark-done and swipe-right is snooze. Candidates: long-press, swipe-left, or a small affordance on the row.
 
 **After UI feels right:**
 - [ ] Move off Expo Go to a dev client; add `react-native-mmkv` for local persistence
@@ -97,6 +103,12 @@ One calm place that holds everything on a person's mind — emails, messages, le
 
 Reverse-chronological. Each entry: date, decision, reasoning, alternatives considered. (Decisions are historical and don't take checkboxes.)
 
+- **2026-05-11** — **Normalized task shape: `title`, `deadline?: Date`, `addedAt: Date`, `source`, `urgent?`, `category`, `dismissed?`.** Reasoning: original mocked tasks mixed AI-generated commentary ("HR is waiting") with actual dates ("due in 3 weeks") and message-age ("she asked yesterday") in the same `when` string. Inconsistent. The displayed "when" is now derived: `formatWhen(deadline, addedAt)` returns a deadline phrase if there's a deadline, otherwise an addedAt phrase. This also makes the model future-proof for the real AI extraction pipeline (which will set the same fields).
+- **2026-05-11** — **`source` stays a single free-form string for now ("gmail · 2 days ago", "letter · gemeente", "you").** Reasoning: the source line carries channel-specific context (sender, age, channel) and splitting it into `{ source, sourceMeta }` adds a structure we don't yet need. Manually-added tasks just get `source: "you"`. Revisit if/when sources start needing programmatic logic (filtering by source, etc).
+- **2026-05-11** — **Undo via soft-delete with a 5s window.** Reasoning: the user reported accidentally tapping rows. Going from "dismissed → gone" to "dismissed → 5s undo window → gone" is the standard Gmail/Material pattern and respects the brief's "no confirmation dialogs" principle (no upfront 'are you sure?'). Implementation: `dismiss()` marks the task `dismissed: true` (filtered from view) and queues actual removal in 5s via a module-level `setTimeout`. `undo()` clears the flag. A second dismissal mid-window finalizes the previous one and starts a new 5s window. Alternative considered: keeping the dismissed task in a separate `dismissed` array — rejected because soft-delete via a flag preserves the task's original position in the array, so undo restores it where it was (rather than at the top).
+- **2026-05-11** — **Undo bar stacks ABOVE the add bar, both visible.** Reasoning: replacing the add bar with the undo bar would block adding for 5s, which is annoying. Stacking keeps both functions reachable. Reanimated `FadeIn`/`FadeOut` handles the entrance/exit; the add bar position is fixed by the parent flex container.
+- **2026-05-11** — **Deadline picker = three pills (today / tomorrow / pick a date) with `@react-native-community/datetimepicker` for custom.** Reasoning: matches the user's ask ("easy picks like today/tomorrow or custom→date picker"). Pills cover the 80% case in one tap. Custom date opens the platform-native picker (iOS spinner inline + "done" link; Android system dialog). The category is derived from the chosen deadline (`categorize()` in the store) — today/tomorrow → Today, +2..7 days → This week, +8 onward → Later. Alternative considered: letting the user explicitly pick the section — rejected because the deadline is the more meaningful input and the section is just a derived view.
+- **2026-05-11** — **Header date and empty-state hint go live via date-fns.** Reasoning: the hardcoded `saturday · may 9` was a holdover from the wireframe and inconsistent with "today" deadlines in the data. `format(now, 'EEEE · MMMM d').toLowerCase()` for the header; `Go enjoy your {EEEE}.` for the empty-state hint. Closes the open question about live dates.
 - **2026-05-11** — **Add screen is a Stack modal route (`app/add.tsx`), not a bottom sheet.** Reasoning: iOS-native modal presentation (slide up from below, swipe-down to dismiss) gives us 80% of the bottom-sheet UX for free, on the same paper background. Bottom sheet libraries (`@gorhom/bottom-sheet`) add a dep and gesture-handler interplay to maintain, and the "card stack" feel is exactly what a focused-input moment wants. Open: revisit if the modal feels too heavy for a thought-capture moment.
 - **2026-05-11** — **Unified `tasks` array with a `category` field, in a Zustand store.** Reasoning: separate `todayTasks` / `weekTasks` arrays were duplicating state shape and made cross-section moves (snooze week→later, etc.) awkward to model later. Unified array filtered at the call site is cleaner; the store is one source of truth and Zustand was already the global standard for cross-screen state. Alternative considered: React Context — rejected because Zustand has no boilerplate, supports selector subscriptions, and matches the global standard.
 - **2026-05-11** — **Manually-added tasks get `source: "you"` and `when: "just added"`.** Reasoning: per-source labeling is part of the trust principle ("source is always visible"). "you" is the honest plain-language label for self-typed items, fitting the lowercase voice ("gmail", "whatsapp"). "just added" reads naturally and avoids the redundancy of saying "today" when the task is already in the Today section.
@@ -122,9 +134,10 @@ Reverse-chronological. Each entry: date, decision, reasoning, alternatives consi
 
 ## Open questions
 
-- [ ] **Header date** — currently hardcoded `saturday · may 9` to match the wireframe. Switch to live date with `date-fns` (e.g. `eeee · MMMM d` lowercased). Decision: live date once layout is stable.
+- [x] ~~**Header date**~~ — resolved 2026-05-11. Header now uses `format(new Date(), 'EEEE · MMMM d').toLowerCase()`. Empty-state hint is `Go enjoy your {EEEE}.`.
 - [ ] **Swipe-hint affordance** — the wireframe shows a subtle gradient + "swipe →" on the third task as a teaching cue. Skipped in the first build because the swipe gesture isn't wired yet. Open: when swipe-to-snooze lands, permanent visual hint vs. once-on-first-run vs. pure discovery?
 - [ ] **Daily notification default time** — brief says "user-set time, default 8am". Open: configurable in v1 settings, or hardcoded to 8am for v1 with settings in v2?
 - [ ] **Snooze semantics** — for v1 it just hides. Open: hide forever, resurface tomorrow, or resurface next week? Default first cut: hide for the current session only (in-memory). MMKV persistence comes with the dev-client work.
+- [ ] **Undo for swipe-to-snooze too?** — undo currently fires for both tap and swipe paths (both call `dismiss()`), so it already works. But the undo bar says "marked done" regardless. If swipe should read "snoozed · undo", we'd need to track the action type. Open: small copy refinement or leave generic.
 - [x] ~~**Greeting copy generation**~~ — resolved 2026-05-11. `numberWord(n)` helper covers 0–9 (digits beyond); singular/plural noun + verb handled inline. Revisit if we ever need >9 items in a section (unlikely in v1).
 - [ ] **Visual rendering of the wireframe in future sessions** — the in-session computer-use access prompt timed out last time. Consider a Claude Preview `launch.json` with `python3 -m http.server` against `docs/` so future sessions can screenshot the rendered design.
