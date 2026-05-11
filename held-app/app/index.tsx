@@ -8,6 +8,7 @@ import {
 } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
+  FadeIn,
   FadeOut,
   LinearTransition,
   interpolateColor,
@@ -20,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { formatTodayHeader, formatTodayName, formatWhen } from '@/helpers/dates';
 import { useTasks, type Task } from '@/store/tasks';
 import { colors, fonts } from '@/theme';
 
@@ -30,7 +32,6 @@ type Section = {
 };
 
 const laterCount = 4;
-const todayDate = 'saturday · may 9';
 
 const WORDS = [
   'Zero',
@@ -53,8 +54,9 @@ export default function HomeScreen() {
   const tasks = useTasks((s) => s.tasks);
   const dismiss = useTasks((s) => s.dismiss);
 
-  const today = tasks.filter((t) => t.category === 'today');
-  const week = tasks.filter((t) => t.category === 'this-week');
+  const visible = tasks.filter((t) => !t.dismissed);
+  const today = visible.filter((t) => t.category === 'today');
+  const week = visible.filter((t) => t.category === 'this-week');
 
   const isClear = today.length === 0;
 
@@ -65,8 +67,24 @@ export default function HomeScreen() {
       ) : (
         <TaskList today={today} week={week} onDone={dismiss} onSnooze={dismiss} />
       )}
-      <AddBar onPress={() => router.push('/add')} />
+      <BottomStack />
     </SafeAreaView>
+  );
+}
+
+function BottomStack() {
+  const pendingDismissId = useTasks((s) => s.pendingDismissId);
+  const undo = useTasks((s) => s.undo);
+
+  return (
+    <View style={styles.bottomStack}>
+      {pendingDismissId && (
+        <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)}>
+          <UndoBar onUndo={undo} />
+        </Animated.View>
+      )}
+      <AddBar onPress={() => router.push('/add')} />
+    </View>
   );
 }
 
@@ -104,7 +122,7 @@ function TaskList({
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.topMeta}>{todayDate}</Text>
+      <Text style={styles.topMeta}>{formatTodayHeader()}</Text>
       <Text style={styles.greeting}>
         {countWord} {noun} <Text style={styles.greetingAccent}>{verb}</Text> today.
       </Text>
@@ -137,13 +155,13 @@ function TaskList({
 function ClearState({ weekCount }: { weekCount: number }) {
   return (
     <View style={styles.clearContainer}>
-      <Text style={styles.topMeta}>{todayDate}</Text>
+      <Text style={styles.topMeta}>{formatTodayHeader()}</Text>
       <View style={styles.clearMessage}>
         <Text style={styles.clearGreeting}>
           You&apos;re <Text style={styles.clearGreetingAccent}>clear.</Text>
         </Text>
         <Text style={styles.clearLine}>Nothing needs you today.</Text>
-        <Text style={styles.clearHint}>Go enjoy your Saturday.</Text>
+        <Text style={styles.clearHint}>Go enjoy your {formatTodayName()}.</Text>
       </View>
 
       <BreathingDot />
@@ -203,6 +221,18 @@ function AddBar({ onPress }: { onPress: () => void }) {
       <View style={styles.plus}>
         <Text style={styles.plusText}>+</Text>
       </View>
+    </Pressable>
+  );
+}
+
+function UndoBar({ onUndo }: { onUndo: () => void }) {
+  return (
+    <Pressable
+      onPress={onUndo}
+      style={({ pressed }) => [styles.undoBar, pressed && styles.undoBarPressed]}
+    >
+      <Text style={styles.undoMsg}>marked done</Text>
+      <Text style={styles.undoLink}>undo</Text>
     </Pressable>
   );
 }
@@ -308,6 +338,8 @@ function TaskRow({
     width: titleWidth * doneProgress.value,
   }));
 
+  const whenText = formatWhen(task.deadline, task.addedAt);
+
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
@@ -325,7 +357,7 @@ function TaskRow({
           <Animated.View style={[styles.strikeBar, strikeStyle]} pointerEvents="none" />
         </View>
         <View style={styles.taskMeta}>
-          <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{task.when}</Text>
+          <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{whenText}</Text>
           <View style={styles.dot} />
           <Text style={styles.source}>{task.source}</Text>
         </View>
@@ -342,7 +374,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 28,
     paddingTop: 12,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   topMeta: {
     fontFamily: fonts.sans.regular,
@@ -454,7 +486,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 28,
     paddingTop: 12,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   clearMessage: {
     marginTop: 48,
@@ -532,12 +564,17 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
 
-  // Add bar
-  addBar: {
+  // Bottom stack (undo + add)
+  bottomStack: {
     position: 'absolute',
     bottom: 24,
     left: 24,
     right: 24,
+    gap: 10,
+  },
+
+  // Add bar
+  addBar: {
     backgroundColor: colors.ink,
     borderRadius: 32,
     paddingVertical: 16,
@@ -573,5 +610,34 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.ink,
     lineHeight: 22,
+  },
+
+  // Undo bar
+  undoBar: {
+    backgroundColor: colors.ink,
+    borderRadius: 28,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  undoBarPressed: {
+    opacity: 0.9,
+  },
+  undoMsg: {
+    fontFamily: fonts.serif.lightItalic,
+    fontSize: 14,
+    color: colors.surface,
+  },
+  undoLink: {
+    fontFamily: fonts.serif.mediumItalic,
+    fontSize: 14,
+    color: colors.accentSoft,
   },
 });
