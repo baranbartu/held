@@ -12,7 +12,8 @@ export type TaskCategory = 'today' | 'this-week' | 'later';
 export type Task = {
   id: string;
   title: string;
-  deadline?: Date;
+  // Backend (AI extraction) always emits a deadline, so it's required here too.
+  deadline: Date;
   addedAt: Date;
   source: string;
   urgent?: boolean;
@@ -23,7 +24,7 @@ export type Task = {
 type TasksState = {
   tasks: Task[];
   pendingDismissId: string | null;
-  add: (title: string, deadline?: Date) => void;
+  add: (title: string, deadline: Date) => void;
   dismiss: (id: string) => void;
   undo: () => void;
 };
@@ -32,8 +33,7 @@ const UNDO_WINDOW_MS = 5000;
 
 const newId = () => `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-export function categorize(deadline: Date | undefined): TaskCategory {
-  if (!deadline) return 'today';
+export function categorize(deadline: Date): TaskCategory {
   if (fnsIsToday(deadline) || fnsIsTomorrow(deadline)) return 'today';
   const days = differenceInDays(deadline, new Date());
   if (days <= 7) return 'this-week';
@@ -63,6 +63,7 @@ function initialTasks(): Task[] {
     {
       id: '3',
       title: 'Reply to mom about Sunday lunch',
+      deadline: now,
       addedAt: subDays(now, 1),
       source: 'whatsapp',
       category: 'today',

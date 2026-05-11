@@ -21,7 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { formatTodayHeader, formatTodayName, formatWhen } from '@/helpers/dates';
+import { composeSource, formatDeadline, formatTodayHeader, formatTodayName } from '@/helpers/dates';
 import { useTasks, type Task } from '@/store/tasks';
 import { colors, fonts } from '@/theme';
 
@@ -50,13 +50,22 @@ function numberWord(n: number): string {
   return WORDS[n] ?? String(n);
 }
 
+// Today section can mix urgent + non-urgent tasks; This week and Later only
+// have deadline-bearing tasks. Sort: urgent first, then deadline ascending.
+function sortTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    if (!!a.urgent !== !!b.urgent) return a.urgent ? -1 : 1;
+    return a.deadline.getTime() - b.deadline.getTime();
+  });
+}
+
 export default function HomeScreen() {
   const tasks = useTasks((s) => s.tasks);
   const dismiss = useTasks((s) => s.dismiss);
 
   const visible = tasks.filter((t) => !t.dismissed);
-  const today = visible.filter((t) => t.category === 'today');
-  const week = visible.filter((t) => t.category === 'this-week');
+  const today = sortTasks(visible.filter((t) => t.category === 'today'));
+  const week = sortTasks(visible.filter((t) => t.category === 'this-week'));
 
   const isClear = today.length === 0;
 
@@ -338,7 +347,8 @@ function TaskRow({
     width: titleWidth * doneProgress.value,
   }));
 
-  const whenText = formatWhen(task.deadline, task.addedAt);
+  const whenText = formatDeadline(task.deadline);
+  const sourceText = composeSource(task.source, task.addedAt);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -359,7 +369,7 @@ function TaskRow({
         <View style={styles.taskMeta}>
           <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{whenText}</Text>
           <View style={styles.dot} />
-          <Text style={styles.source}>{task.source}</Text>
+          <Text style={styles.source}>{sourceText}</Text>
         </View>
       </Animated.View>
     </GestureDetector>
