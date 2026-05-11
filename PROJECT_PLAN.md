@@ -16,7 +16,7 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] Tap to mark done (strike-through animation, fade-out, reflow)
 - [x] Swipe to snooze (just hides the item for v1; no scheduling yet)
 - [x] Wire empty state to real data condition (`todayTasks.length === 0`)
-- [ ] Add flow: single text input "what's on your mind?"
+- [x] Add flow: single text input "what's on your mind?"
 - [ ] Item detail view ("where this came from")
 - [ ] Daily local notification at user-set time, default 8am
 - [ ] MMKV local storage (requires moving off Expo Go to a dev client)
@@ -80,11 +80,13 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] `MODE` constant retired — empty state derives from `todayTasks.length === 0`
 - [x] Greeting / subgreeting copy generates from live counts ("Three things need you today." → "One thing…" → empty state)
 - [x] `GestureHandlerRootView` wrapped at app root
+- [x] Zustand store (`store/tasks.ts`) holding unified task list with category field
+- [x] Add screen (`app/add.tsx`) — iOS-style modal, paper background, Fraunces text input, "we'll figure out the rest." assurance line
+- [x] Add bar on home is now `Pressable`, navigates to `/add`
 
 **Next up (this session or the next):**
-- [ ] User reviews tap + swipe on device, flags anything off
-- [ ] Add flow — bottom sheet (or full screen) with single text input "what's on your mind?"
-- [ ] Item detail view ("where this came from")
+- [ ] User reviews add flow on device, flags anything off
+- [ ] Item detail view ("where this came from") — tap a task in non-done mode? Or different gesture?
 - [ ] Switch hardcoded date to live, with `date-fns` formatting
 
 **After UI feels right:**
@@ -95,6 +97,10 @@ One calm place that holds everything on a person's mind — emails, messages, le
 
 Reverse-chronological. Each entry: date, decision, reasoning, alternatives considered. (Decisions are historical and don't take checkboxes.)
 
+- **2026-05-11** — **Add screen is a Stack modal route (`app/add.tsx`), not a bottom sheet.** Reasoning: iOS-native modal presentation (slide up from below, swipe-down to dismiss) gives us 80% of the bottom-sheet UX for free, on the same paper background. Bottom sheet libraries (`@gorhom/bottom-sheet`) add a dep and gesture-handler interplay to maintain, and the "card stack" feel is exactly what a focused-input moment wants. Open: revisit if the modal feels too heavy for a thought-capture moment.
+- **2026-05-11** — **Unified `tasks` array with a `category` field, in a Zustand store.** Reasoning: separate `todayTasks` / `weekTasks` arrays were duplicating state shape and made cross-section moves (snooze week→later, etc.) awkward to model later. Unified array filtered at the call site is cleaner; the store is one source of truth and Zustand was already the global standard for cross-screen state. Alternative considered: React Context — rejected because Zustand has no boilerplate, supports selector subscriptions, and matches the global standard.
+- **2026-05-11** — **Manually-added tasks get `source: "you"` and `when: "just added"`.** Reasoning: per-source labeling is part of the trust principle ("source is always visible"). "you" is the honest plain-language label for self-typed items, fitting the lowercase voice ("gmail", "whatsapp"). "just added" reads naturally and avoids the redundancy of saying "today" when the task is already in the Today section.
+- **2026-05-11** — **Single `TextInput` with `multiline`, `blurOnSubmit`, return key submits.** Reasoning: tasks can be longer than one visual line ("Reply to mom about Sunday lunch about whether the casserole was too dry"), but the gesture should still be type-and-return. `multiline=true` + `blurOnSubmit=true` lets RN wrap visually while keeping return as the submit key. No explicit save button — would add chrome the brief doesn't want.
 - **2026-05-11** — **Gestures before add flow.** Reasoning: tap-to-done + swipe-to-snooze live on the home screen and complete the "two gestures, that's the whole interaction model" principle. They also unlock the empty state organically (mark everything done → "You're clear." appears) without needing a new screen. The brief's sequence said add flow next, but redirected after a brief recommendation.
 - **2026-05-11** — **Tap-to-done = strike-through animation, not just a fade.** Reasoning: the brief explicitly notes "the cross-out moment matters." Strike line draws across the title (260ms, `Easing.out`) while title color interpolates to done-green; only after that does the row fade and exit. The done color (`#6B8E5A`) is in the wireframe palette and per the wireframe's "Done (used sparingly)" note, this is its only home for now. Alternative considered: instant `textDecorationLine: 'line-through'` — rejected because RN can't animate the text decoration property and the drawn line is what makes the moment feel earned.
 - **2026-05-11** — **Swipe right (not left) for snooze.** Reasoning: matches the wireframe's `swipe →` hint and the CSS gradient `transparent → rgba(184,92,60,0.06)` on the right side of the third task. Threshold = 100px translationX; under that, springs back.
