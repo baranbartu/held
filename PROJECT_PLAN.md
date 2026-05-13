@@ -14,7 +14,8 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] Home screen with Today / This week / Later sections (Later collapsed by default)
 - [x] Empty state with "You're clear." copy + breathing-dot animation
 - [x] Tap to mark done (strike-through animation, fade-out, reflow)
-- [x] Swipe to snooze (just hides the item for v1; no scheduling yet)
+- [x] Swipe to postpone (today / tomorrow / pick-a-date picker, updates deadline + re-categorizes)
+- [x] Swipe-left to open item detail (replaces the old "snooze = hide" gesture)
 - [x] Wire empty state to real data condition (`todayTasks.length === 0`)
 - [x] Add flow: single text input "what's on your mind?" with deadline picker (today / tomorrow / custom date)
 - [x] Switch hardcoded header date to live date with `date-fns`
@@ -154,6 +155,6 @@ Reverse-chronological. Each entry: date, decision, reasoning, alternatives consi
 - [ ] **Swipe-hint affordance** — the wireframe shows a subtle gradient + "swipe →" on the third task as a teaching cue. Skipped in the first build because the swipe gesture isn't wired yet. Open: when swipe-to-snooze lands, permanent visual hint vs. once-on-first-run vs. pure discovery?
 - [ ] **Daily notification default time** — brief says "user-set time, default 8am". Open: configurable in v1 settings, or hardcoded to 8am for v1 with settings in v2?
 - [ ] **Snooze semantics** — for v1 it just hides. Open: hide forever, resurface tomorrow, or resurface next week? Default first cut: hide for the current session only (in-memory). MMKV persistence comes with the dev-client work.
-- [ ] **Undo for swipe-to-snooze too?** — undo currently fires for both tap and swipe paths (both call `dismiss()`), so it already works. But the undo bar says "marked done" regardless. If swipe should read "snoozed · undo", we'd need to track the action type. Open: small copy refinement or leave generic.
+- [x] ~~**Undo for swipe-to-snooze too?**~~ — moot. Swipe-right is now postpone (non-destructive: task moves to a new deadline, stays visible); the user can re-postpone or open detail to verify. Undo applies only to tap-to-done.
 - [x] ~~**Greeting copy generation**~~ — resolved 2026-05-11. `numberWord(n)` helper covers 0–9 (digits beyond); singular/plural noun + verb handled inline. Revisit if we ever need >9 items in a section (unlikely in v1).
 - [ ] **Visual rendering of the wireframe in future sessions** — the in-session computer-use access prompt timed out last time. Consider a Claude Preview `launch.json` with `python3 -m http.server` against `docs/` so future sessions can screenshot the rendered design.
