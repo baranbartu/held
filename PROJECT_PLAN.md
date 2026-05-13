@@ -21,7 +21,7 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] Switch hardcoded header date to live date with `date-fns`
 - [x] Undo for accidental taps — 5-second soft-delete window with an undo bar above the add bar
 - [x] Normalize task shape — every task has the same fields; "when" text is derived from `deadline` or `addedAt`
-- [ ] Item detail view ("where this came from")
+- [x] Item detail view ("where this came from") — opened via swipe-left; shows source, title, deadline, raw context, and mark-done + postpone actions
 - [ ] Daily local notification at user-set time, default 8am
 - [ ] MMKV local storage (requires moving off Expo Go to a dev client)
 
