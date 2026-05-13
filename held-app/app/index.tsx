@@ -69,12 +69,23 @@ export default function HomeScreen() {
 
   const isClear = today.length === 0;
 
+  const openPostpone = (id: string) =>
+    router.push({ pathname: '/postpone', params: { id } });
+  const openDetail = (id: string) =>
+    router.push({ pathname: '/detail', params: { id } });
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {isClear ? (
         <ClearState weekCount={week.length} />
       ) : (
-        <TaskList today={today} week={week} onDone={dismiss} onSnooze={dismiss} />
+        <TaskList
+          today={today}
+          week={week}
+          onDone={dismiss}
+          onPostpone={openPostpone}
+          onDetail={openDetail}
+        />
       )}
       <BottomStack />
     </SafeAreaView>
@@ -101,12 +112,14 @@ function TaskList({
   today,
   week,
   onDone,
-  onSnooze,
+  onPostpone,
+  onDetail,
 }: {
   today: Task[];
   week: Task[];
   onDone: (id: string) => void;
-  onSnooze: (id: string) => void;
+  onPostpone: (id: string) => void;
+  onDetail: (id: string) => void;
 }) {
   const isSingular = today.length === 1;
   const countWord = numberWord(today.length);
@@ -150,7 +163,8 @@ function TaskList({
               task={task}
               last={i === section.tasks.length - 1}
               onDone={onDone}
-              onSnooze={onSnooze}
+              onPostpone={onPostpone}
+              onDetail={onDetail}
             />
           ))}
         </View>
@@ -275,12 +289,14 @@ function TaskRow({
   task,
   last,
   onDone,
-  onSnooze,
+  onPostpone,
+  onDetail,
 }: {
   task: Task;
   last: boolean;
   onDone: (id: string) => void;
-  onSnooze: (id: string) => void;
+  onPostpone: (id: string) => void;
+  onDetail: (id: string) => void;
 }) {
   const translateX = useSharedValue(0);
   const opacity = useSharedValue(1);
@@ -309,24 +325,26 @@ function TaskRow({
     );
   });
 
+  // Bidirectional pan: right past threshold opens /postpone (with date picker);
+  // left past threshold opens /detail ("where this came from"). Row springs
+  // back to 0 in both commit cases — the modal slides over it, and on return
+  // the row stays in its original spot (or its new position after postpone).
   const pan = Gesture.Pan()
-    .activeOffsetX(20)
+    .activeOffsetX([-20, 20])
     .failOffsetY([-12, 12])
     .onChange((e) => {
       'worklet';
-      if (e.translationX > 0) {
-        translateX.value = e.translationX;
-      }
+      translateX.value = e.translationX;
     })
     .onEnd((e) => {
       'worklet';
-      if (e.translationX > 100) {
-        translateX.value = withTiming(440, { duration: 220 });
-        opacity.value = withTiming(0, { duration: 220 }, (finished) => {
-          if (finished) {
-            runOnJS(onSnooze)(task.id);
-          }
-        });
+      const COMMIT = 100;
+      if (e.translationX > COMMIT) {
+        translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
+        runOnJS(onPostpone)(task.id);
+      } else if (e.translationX < -COMMIT) {
+        translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
+        runOnJS(onDetail)(task.id);
       } else {
         translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
       }

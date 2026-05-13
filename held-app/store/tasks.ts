@@ -19,6 +19,10 @@ export type Task = {
   urgent?: boolean;
   category: TaskCategory;
   dismissed?: boolean;
+  // The raw "where this came from" — email subject + snippet, SMS body, etc.
+  // Shown on the detail view as the trust mechanism. Optional because manually
+  // added tasks don't have one.
+  context?: string;
 };
 
 type TasksState = {
@@ -26,6 +30,7 @@ type TasksState = {
   pendingDismissId: string | null;
   add: (title: string, deadline: Date) => void;
   dismiss: (id: string) => void;
+  postpone: (id: string, deadline: Date) => void;
   undo: () => void;
 };
 
@@ -51,6 +56,8 @@ function initialTasks(): Task[] {
       source: 'gmail',
       urgent: true,
       category: 'today',
+      context:
+        'HR Department <hr@company.com>\nSubject: Interview scheduling — engineering role\n\nHi, we\'d love to schedule a video interview next week. What times work for you?',
     },
     {
       id: '2',
@@ -59,6 +66,8 @@ function initialTasks(): Task[] {
       addedAt: subDays(now, 5),
       source: 'letter · gemeente',
       category: 'today',
+      context:
+        'Gemeente Amsterdam\nReference GT-2026-0142\n\nVerschuldigd: €127,00\nUiterste betaaldatum: 31 mei 2026',
     },
     {
       id: '3',
@@ -67,6 +76,7 @@ function initialTasks(): Task[] {
       addedAt: subDays(now, 1),
       source: 'whatsapp',
       category: 'today',
+      context: 'Mom\n\n"wanna come for sunday lunch? bring something sweet please ♥"',
     },
     {
       id: '4',
@@ -75,6 +85,8 @@ function initialTasks(): Task[] {
       addedAt: subDays(now, 8),
       source: 'sms',
       category: 'this-week',
+      context:
+        '+31 6 1234 5678\n\n"Hi! Dr. Bakker\'s office here, confirming your appointment Thursday at 10:00. Reply Y to confirm."',
     },
     {
       id: '5',
@@ -83,6 +95,8 @@ function initialTasks(): Task[] {
       addedAt: subDays(now, 2),
       source: 'slack · #team',
       category: 'this-week',
+      context:
+        'Marcus in #team\n\n"hey, when\'s the Q2 deck looking like? I want to share it with the board on Friday."',
     },
   ];
 }
@@ -109,6 +123,15 @@ export const useTasks = create<TasksState>((set, get) => ({
       };
       return { tasks: [task, ...state.tasks] };
     }),
+
+  postpone: (id, deadline) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === id
+          ? { ...t, deadline, category: categorize(deadline) }
+          : t
+      ),
+    })),
 
   dismiss: (id) => {
     // Finalize any previous pending dismiss before queuing the new one.
