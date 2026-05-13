@@ -93,10 +93,15 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] `deadline` is required on `Task` (matches eventual backend reality); mom got a deadline
 - [x] WHEN slot strictly shows deadline; addedAt moved into source line via `composeSource()`
 - [x] Tasks sorted within each section: urgent first, then deadline ascending
+- [x] Swipe-right → `/postpone` modal (tomorrow / next week / pick-a-date pills, instant-commit)
+- [x] Swipe-left → `/detail` modal (source, title, deadline, raw "where this came from" context, mark-done + postpone actions at bottom)
+- [x] `context` field on Task with mocked email/SMS/WhatsApp/Slack/letter copy for the five sample tasks
+- [x] `postpone(id, deadline)` store action that updates deadline + re-categorizes
 
 **Next up (this session or the next):**
 - [ ] User reviews on device, flags anything off
-- [ ] Item detail view ("where this came from") — needs a non-conflicting gesture since tap is mark-done and swipe-right is snooze. Candidates: long-press, swipe-left, or a small affordance on the row.
+- [ ] Daily local notification at user-set time, default 8am (needs dev-client + `expo-notifications`)
+- [ ] MMKV local storage (also needs dev-client)
 - [ ] **(deferred to end of phase 1)** i18n pass — set up `i18next` + English catalog + translations for Turkish, Dutch, German, Spanish, Portuguese, Italian. Wait until English copy is locked.
 
 **After UI feels right:**
@@ -107,6 +112,9 @@ One calm place that holds everything on a person's mind — emails, messages, le
 
 Reverse-chronological. Each entry: date, decision, reasoning, alternatives considered. (Decisions are historical and don't take checkboxes.)
 
+- **2026-05-11** — **Three gestures, not two: tap = done, swipe-right = postpone, swipe-left = detail.** Reasoning: the brief's "two gestures, that's the whole interaction model" became three because the original "swipe to snooze = just hide" was barely functional and we needed somewhere for the detail view to live. Tap-to-done is preserved (brief's design intent: the most common action should be the fastest gesture). Swipe-right is upgraded from hide to "postpone with picker" — same today/tomorrow/pick-a-date pills as add, so the mental model is symmetric. Swipe-left is the new detail gesture — horizontal symmetry with right reads as a paired set, and we avoid long-press (which feels heavy for a calm app) or row affordances (visual noise). Alternative considered: tap = open detail with done on a swipe — rejected because the brief explicitly bets that completion is the most common action and should be a single tap; undo (5s) catches accidents.
+- **2026-05-11** — **Detail view = modal route with title, source, deadline, raw context, and mark-done + postpone actions at the bottom.** Reasoning: the principle says "source is always visible — trust mechanism." The detail view is where that trust pays off: the raw email subject + snippet, the SMS body, the WhatsApp message text. The two actions at the bottom (mark done filled, postpone outlined) let the user resolve the item without swiping again. Postpone from detail uses `router.replace()` to swap detail for postpone — no flash of home in between.
+- **2026-05-11** — **Postpone modal uses instant-commit on pill tap (no submit button).** Reasoning: postpone is a quick action; users should be able to swipe → tap → done. The add modal needs a submit because the user is composing text; the postpone modal has no text input and pill = decision. Custom date picker still requires a "postpone" tap on iOS (since the wheel picker fires onChange on every spin), but the two preset pills commit immediately. Trade-off: no way to back out after tapping a pill except re-postponing — acceptable given the action is reversible by re-swiping.
 - **2026-05-11** — **`deadline` is now required on `Task` (not optional).** Reasoning: the phase 2 backend's whole job is AI extraction — every emitted task will carry an inferred deadline. Modeling deadline as optional in v1 mocks was creating inconsistent display logic ("tomorrow" vs. "added yesterday" in the same slot) that wouldn't exist in production. Required matches the real model. Mom's task (which had no deadline) got `deadline: today` since she's waiting on a reply — reasonable AI inference.
 - **2026-05-11** — **WHEN slot strictly shows deadline; addedAt moves into source line.** Reasoning: the slot was carrying two different concepts depending on the task (deadline-flavor vs. age-flavor), which read inconsistent across rows. Now WHEN is always "when is it due" and the source line carries channel context. `composeSource()` appends recency only when the source has no meta of its own — `whatsapp` → `whatsapp · yesterday`, but `letter · gemeente` stays as-is. Sources with their own meta (sender / channel) win over recency since they're more informative.
 - **2026-05-11** — **Sort tasks within sections: urgent first, then deadline ascending.** Reasoning: the wireframe order (urgent interview → garbage tax → mom) wasn't arbitrary — it's what the AI would order by importance. Manual order (newest-added first) was fine for a fully-empty list but breaks as soon as users have a few items and expect "what's most pressing" at the top. Urgent override matters because some tasks need attention even when their deadline is distant (the interview case).
