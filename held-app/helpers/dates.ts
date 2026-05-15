@@ -45,3 +45,14 @@ export function formatTodayHeader(now: Date = new Date()): string {
 export function formatTodayName(now: Date = new Date()): string {
   return format(now, 'EEEE');
 }
+
+// Effort in minutes, presented in Held's plain-language voice. We hedge with
+// "about" everywhere because the value is an estimate — overcommitting to a
+// specific number would feel dishonest.
+export function formatEffort(minutes: number): string {
+  if (minutes < 1) return 'less than a minute';
+  if (minutes < 60) return `about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return 'about an hour';
+  return `about ${hours} hours`;
+}

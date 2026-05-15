@@ -23,6 +23,10 @@ export type Task = {
   // Shown on the detail view as the trust mechanism. Optional because manually
   // added tasks don't have one.
   context?: string;
+  // Estimated minutes to complete, AI-inferred from content (length, action
+  // type, etc.). Optional because manually-added tasks don't have an estimate
+  // and the field is shown only in the detail view, so absence is graceful.
+  effort?: number;
 };
 
 type TasksState = {
@@ -38,6 +42,11 @@ const UNDO_WINDOW_MS = 5000;
 
 const newId = () => `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+// Default categorization from deadline alone — used by the manual add flow.
+// AI-extracted tasks (phase 2 backend; hardcoded in mocks today) can override
+// this and set `category` independently to elevate something for importance
+// regardless of how far out the deadline is (e.g. a tax bill in 3 weeks lives
+// in Today because the cost of forgetting is high).
 export function categorize(deadline: Date): TaskCategory {
   if (fnsIsToday(deadline) || fnsIsTomorrow(deadline)) return 'today';
   const days = differenceInDays(deadline, new Date());
@@ -58,6 +67,7 @@ function initialTasks(): Task[] {
       category: 'today',
       context:
         'HR Department <hr@company.com>\nSubject: Interview scheduling — engineering role\n\nHi, we\'d love to schedule a video interview next week. What times work for you?',
+      effort: 10,
     },
     {
       id: '2',
@@ -68,6 +78,7 @@ function initialTasks(): Task[] {
       category: 'today',
       context:
         'Gemeente Amsterdam\nReference GT-2026-0142\n\nVerschuldigd: €127,00\nUiterste betaaldatum: 31 mei 2026',
+      effort: 5,
     },
     {
       id: '3',
@@ -77,6 +88,7 @@ function initialTasks(): Task[] {
       source: 'whatsapp',
       category: 'today',
       context: 'Mom\n\n"wanna come for sunday lunch? bring something sweet please ♥"',
+      effort: 2,
     },
     {
       id: '4',
@@ -87,6 +99,7 @@ function initialTasks(): Task[] {
       category: 'this-week',
       context:
         '+31 6 1234 5678\n\n"Hi! Dr. Bakker\'s office here, confirming your appointment Thursday at 10:00. Reply Y to confirm."',
+      effort: 1,
     },
     {
       id: '5',
@@ -97,6 +110,7 @@ function initialTasks(): Task[] {
       category: 'this-week',
       context:
         'Marcus in #team\n\n"hey, when\'s the Q2 deck looking like? I want to share it with the board on Friday."',
+      effort: 90,
     },
   ];
 }

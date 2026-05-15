@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { composeSource, formatDeadline } from '@/helpers/dates';
+import { composeSource, formatDeadline, formatEffort } from '@/helpers/dates';
 import { useTasks } from '@/store/tasks';
 import { colors, fonts } from '@/theme';
 
@@ -43,6 +43,9 @@ export default function DetailScreen() {
           <Text style={[styles.deadline, task.urgent && styles.deadlineUrgent]}>
             due {formatDeadline(task.deadline)}
           </Text>
+          {task.effort !== undefined && (
+            <Text style={styles.effort}>takes {formatEffort(task.effort)}</Text>
+          )}
 
           <View style={styles.divider} />
 
@@ -121,6 +124,13 @@ const styles = StyleSheet.create({
   },
   deadlineUrgent: {
     color: colors.accent,
+  },
+  effort: {
+    fontFamily: fonts.serif.lightItalic,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.muted,
+    marginTop: 2,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
