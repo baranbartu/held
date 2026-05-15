@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { scheduleDailyReminder } from '@/helpers/notifications';
 import {
   useFonts as useFraunces,
   Fraunces_300Light,
@@ -46,6 +48,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  useEffect(() => {
+    // Fire-and-forget: ask for notification permission (if not yet asked)
+    // and (re)schedule the daily 8am reminder. Idempotent on relaunch.
+    scheduleDailyReminder().catch(() => {
+      // Silent: notifications are an enhancement, not a hard requirement.
+    });
+  }, []);
 
   if (!fontsLoaded) {
     return null;
