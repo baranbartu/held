@@ -33,28 +33,49 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - Web push, server-sent notifications
 - Subscription / payments
 
-### Phase 2 — Backend + accounts (status: not started)
+### Phase 2 — Backend + auth + manual capture + AI extraction (status: not started)
 
-**Goal:** real data, cross-device sync, real Gmail integration.
+**Goal:** real data, cross-device sync, and AI-interpreted manual capture in three flavors — text, voice, photo. No 3rd-party connectors yet; the product works on day one for any user without setup.
 
 **In scope:**
 - [ ] `held-api/` scaffolded — Cloudflare Workers + Hono per global standards
 - [ ] D1 schema + migrations for users and tasks
+- [ ] R2 buckets for audio + photo uploads
 - [ ] Better Auth via `better-auth-cloudflare` — Sign in with Apple + Sign in with Google (no email/password, no magic link)
+- [ ] Text capture wired to backend (replaces local-only add)
+- [ ] Voice capture — `expo-av` to record, upload to R2 → Whisper or Claude audio API to transcribe → Claude to extract task fields
+- [ ] Photo / image capture — `expo-image-picker` + `expo-camera`, upload to R2 → Claude vision to extract task fields. Handles *any* photo: receipt, screenshot of an email, screenshot of a WhatsApp message, paper letter — same path.
+- [ ] AI extraction prompt(s) tuned for Held's voice (plain language, precision > recall)
+- [ ] Server-authoritative task state, cross-device sync (mobile pulls on cold launch + foreground + pull-to-refresh)
+- [ ] Daily notification body updates live from server snapshot on each app foreground
+
+**Out of scope (later phases):**
+- Any 3rd-party connector (Gmail, Slack, WhatsApp, SMS, Jira, letter OCR pipeline — phase 3)
+- Server-driven push notifications (phase 3+ for paid tier)
+- Monetization / paywall (phase 4)
+
+### Phase 3 — 3rd-party connectors (status: not started)
+
+**Goal:** automated ingestion from common sources, building on the same AI extraction the manual capture path already proved out. Gmail first; expand based on user pull.
+
+**In scope:**
 - [ ] Gmail OAuth with refresh tokens encrypted in D1
-- [ ] AI extraction pipeline using Anthropic API
-- [ ] Server-authoritative task state, cross-device sync
+- [ ] Gmail Pub/Sub watch + webhook endpoint into the existing extraction pipeline
+- [ ] Single batched daily housekeeping cron (token refresh, Pub/Sub watch renewal across all users) — *not* a per-user cron
+- [ ] Slack Event API webhook (next likely)
+- [ ] WhatsApp via Meta Cloud API, SMS via Twilio (later in phase 3 or deferred)
 
-**Out of scope (later in phase 2 or in phase 3):**
-- WhatsApp, SMS, Slack, Jira connectors
+**Out of scope:**
+- Per-user cron (we use webhooks; cron only for housekeeping)
+- A dedicated letter OCR pipeline — phase 2's photo capture path covers letters already
 
-### Phase 3 — Monetization (status: not started)
+### Phase 4 — Monetization (status: not started)
 
 **Goal:** premium subscription, sustainable business model. Free tier remains usable indefinitely; premium adds, doesn't gate the core promise.
 
 **In scope:**
 - [ ] In-app purchase via App Store / Play Store, abstracted through RevenueCat
-- [ ] Premium features TBD based on user feedback (likely: more connectors, longer history, smarter scheduling)
+- [ ] Premium feature line — TBD based on first user feedback (candidates: more connectors, longer history, smarter scheduling, server-driven push)
 
 **Out of scope:**
 - Anything that gates the core worry-offloader promise behind a paywall
@@ -97,20 +118,23 @@ One calm place that holds everything on a person's mind — emails, messages, le
 - [x] `context` field on Task with mocked email/SMS/WhatsApp/Slack/letter copy for the five sample tasks
 - [x] `postpone(id, deadline)` store action that updates deadline + re-categorizes
 
-**Next up (this session or the next):**
-- [ ] User reviews on device, flags anything off
-- [ ] Daily local notification at user-set time, default 8am (needs dev-client + `expo-notifications`)
-- [ ] MMKV local storage (also needs dev-client)
+**Next up — closes phase 1:**
+- [ ] MMKV local storage — moves off Expo Go to a dev client, persists the task list across cold launches
 - [ ] **(deferred to end of phase 1)** i18n pass — set up `i18next` + English catalog + translations for Turkish, Dutch, German, Spanish, Portuguese, Italian. Wait until English copy is locked.
 
-**After UI feels right:**
-- [ ] Move off Expo Go to a dev client; add `react-native-mmkv` for local persistence
-- [ ] Add `expo-notifications` for the daily 8am notification
+**Then phase 2 kicks off:**
+- [ ] Scaffold `held-api/` (Cloudflare Workers + Hono + D1 + R2)
+- [ ] Sign in with Apple + Google via Better Auth
+- [ ] Wire existing text-add flow to backend
+- [ ] Voice capture flow (`expo-av` → upload → Whisper/Claude audio → extract)
+- [ ] Photo capture flow (`expo-image-picker`/`expo-camera` → upload → Claude vision → extract)
 
 ## Decisions log
 
 Reverse-chronological. Each entry: date, decision, reasoning, alternatives considered. (Decisions are historical and don't take checkboxes.)
 
+- **2026-05-16** — **Phases reordered: capture-first, connectors-later. Monetization moves to phase 4.** Reasoning: 3rd-party connectors (Gmail OAuth, Slack Event API, Meta Business verification for WhatsApp, Twilio for SMS) carry significant integration and platform-approval complexity — Meta verification alone is multi-week. Manual capture (text / voice / photo) ships value on day one for any user without setup, validates the AI extraction quality independently, and the photo path also covers letters / receipts / screenshots of other apps, eliminating the need for a separate OCR pipeline. Connectors become "automation on top" once capture is proven. Phase 2 = backend + auth + manual capture + AI. Phase 3 = connectors. Phase 4 = monetization. Alternative considered: ship a half-built capture in mobile-only v1 (capture but no AI) — rejected because the FEEL we're testing IS the AI's interpretation of the input; capture without AI is misleading.
+- **2026-05-16** — **Webhooks-first for connector ingestion; no per-user cron.** Reasoning: per-user cron would mean N × frequency executions per cycle (most of them wasted because no new data) and scales poorly. Webhooks fire only when something actually happens, so cost scales with message volume not user count. Single batched housekeeping cron for OAuth-token refresh + Gmail Pub/Sub watch renewal across all users. Daily 8am notification stays device-local (already shipped), no server cron involved.
 - **2026-05-16** — **Gestures flipped to convention: tap = open detail, swipe-right = mark done, swipe-left = postpone. Reveal-on-swipe affordances added.** Reasoning: novice user feedback (partner) flagged the brief's tap=done as unintuitive. Most apps treat tap as "show me more" — and surprise mark-done erodes trust, even with undo. Conventional pattern matches Mail / Things / Reminders muscle memory. Lost: the "tap to finish" satisfaction the brief was betting on; the strike-through animation that made tap-done feel earned. Gained: zero-surprise discoverability for first-time users, plus self-documenting gestures via the hint backdrop ("done" / "postpone" peek out from behind the row as it drags). Alternative considered: keep tap=done and add a first-launch coaching overlay — rejected because coaching is a workaround for an unintuitive default. If you have to teach a gesture, the gesture is wrong.
 - **2026-05-16** — **Effort estimate (`effort?: number` on Task) is shown in detail view only; not on the row.** Reasoning: the home row is already carrying title + when + source; adding effort risks chrome on a screen the wireframe deliberately kept sparse. Detail view is the right home for "more info you might need". Revisit only if users find themselves opening detail just to answer "is this a quick one?". Phrased in Held's voice: "takes about 5 minutes" / "takes about an hour", hedged with "about" because it's an AI estimate. Also documented the category logic alongside this change: `categorize()` derives category from deadline for manual adds, but AI-extracted tasks can set `category` independently to elevate something for importance (which is why "Pay garbage tax — in 3 weeks" lives in Today).
 - **2026-05-15** — **Notification body shows dynamic count + bullet list of today's tasks.** Reasoning: a static "here's what needs you today" is less useful than the actual list. Notifications can render multi-line bodies with `\n`; unicode bullets (•) give a styled-list look without native styling. Content is snapshot at schedule time (cold launch), not at fire-time — backgrounded recompute isn't reliable on mobile. Acceptable for v1 since the count is correct at last app open; once MMKV lands, we can reschedule on every state change to stay current.
@@ -149,7 +173,7 @@ Reverse-chronological. Each entry: date, decision, reasoning, alternatives consi
 - **2026-05-10** — **Visual confirmation of the wireframe via Safari/computer-use was attempted but timed out (no user response to the access prompt). Built the home screen from the HTML/CSS source instead.** Reasoning: the source is unambiguous and all design tokens (colors, fonts, spacing) are explicit. We'll iterate on layout once the user runs the app on a device. Note for next session: if visual confirmation is wanted, set up a Claude Preview launch.json that serves `docs/` via `python3 -m http.server`.
 - **2026-05-10** — **Credentials file for this project: `~/.baran-creds`.** Reasoning: matches the Expo account (`baranbartu`) the app will be owned by, and the GH account that will host the repo. Alternative considered: default `~/.gizem-creds`, rejected because it would mean a different GH account than the Expo owner.
 - **2026-05-10** — **Multi-component layout (`held-app/` + future `held-api/`) chosen up front.** Reasoning: phase 2 will need a backend, and the global standard prefers naming components correctly from day one over restructuring later. `held-api/` is deferred (not scaffolded) until phase 2 begins.
-- **2026-05-10** — **v1 is fully mocked: no backend, no auth, no real connectors, no AI extraction.** Reasoning: the product's worth is in the feeling of the UI — the calm, the plain language, the empty state. We need to nail that before any data pipeline. Real Gmail / AI / sync are phase 2.
+- **2026-05-10** — **v1 is fully mocked: no backend, no auth, no real connectors, no AI extraction.** Reasoning: the product's worth is in the feeling of the UI — the calm, the plain language, the empty state. We need to nail that before any data pipeline. Real AI + sync land in phase 2; real connectors land in phase 3 (re-prioritized — see 2026-05-16 entry).
 - **2026-05-10** — **Zustand for cross-screen state, `useState` for everything else. No Redux, no React Query in v1.** Reasoning: per global mobile standard. The app has few cross-screen needs in v1 anyway.
 
 ## Open questions
