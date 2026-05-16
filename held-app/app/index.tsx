@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Gesture,
@@ -11,7 +11,6 @@ import Animated, {
   FadeIn,
   FadeOut,
   LinearTransition,
-  interpolateColor,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -300,35 +299,23 @@ function TaskRow({
 }) {
   const translateX = useSharedValue(0);
   const opacity = useSharedValue(1);
-  const doneProgress = useSharedValue(0);
-  const [titleWidth, setTitleWidth] = useState(0);
 
+  // Tap = open detail (the conventional "tap to open" pattern). Mark-done is
+  // moved to swipe-right; postpone to swipe-left. Brief was "tap = done", but
+  // novice user feedback showed it was unintuitive — most apps treat tap as
+  // "show me more", and surprise mark-done erodes trust (even with undo).
   const tap = Gesture.Tap().onEnd((_e, success) => {
     'worklet';
     if (!success) return;
-    doneProgress.value = withTiming(
-      1,
-      { duration: 260, easing: Easing.out(Easing.ease) },
-      (strikeDone) => {
-        if (strikeDone) {
-          opacity.value = withTiming(
-            0,
-            { duration: 220, easing: Easing.in(Easing.ease) },
-            (fadeDone) => {
-              if (fadeDone) {
-                runOnJS(onDone)(task.id);
-              }
-            }
-          );
-        }
-      }
-    );
+    runOnJS(onDetail)(task.id);
   });
 
-  // Bidirectional pan: right past threshold opens /postpone (with date picker);
-  // left past threshold opens /detail ("where this came from"). Row springs
-  // back to 0 in both commit cases — the modal slides over it, and on return
-  // the row stays in its original spot (or its new position after postpone).
+  // Bidirectional pan: swipe right past threshold dismisses (mark done) with
+  // a slide-off animation; swipe left past threshold opens /postpone with the
+  // row springing back (the postpone modal slides over it). The hint backdrop
+  // behind the row reveals "done" on the left as the row drags right, and
+  // "postpone" on the right as it drags left — making the gestures
+  // self-documenting without on-row chrome.
   const pan = Gesture.Pan()
     .activeOffsetX([-20, 20])
     .failOffsetY([-12, 12])
@@ -340,12 +327,17 @@ function TaskRow({
       'worklet';
       const COMMIT = 100;
       if (e.translationX > COMMIT) {
+        // Swipe right = mark done. Slide row off, fade, then dismiss.
+        translateX.value = withTiming(440, { duration: 220 });
+        opacity.value = withTiming(0, { duration: 220 }, (finished) => {
+          if (finished) runOnJS(onDone)(task.id);
+        });
+      } else if (e.translationX < -COMMIT) {
+        // Swipe left = postpone. Spring back, navigate to /postpone modal.
         translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
         runOnJS(onPostpone)(task.id);
-      } else if (e.translationX < -COMMIT) {
-        translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
-        runOnJS(onDetail)(task.id);
       } else {
+        // Below threshold, spring back.
         translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
       }
     });
@@ -357,40 +349,34 @@ function TaskRow({
     opacity: opacity.value,
   }));
 
-  const titleColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(doneProgress.value, [0, 1], [colors.ink, colors.done]),
-  }));
-
-  const strikeStyle = useAnimatedStyle(() => ({
-    width: titleWidth * doneProgress.value,
-  }));
-
   const whenText = formatDeadline(task.deadline);
   const sourceText = composeSource(task.source, task.addedAt);
 
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        style={[styles.task, !last && styles.taskBorder, rowStyle]}
-        layout={LinearTransition.duration(260)}
-        exiting={FadeOut.duration(180)}
-      >
-        <View style={styles.titleWrap}>
-          <Animated.Text
-            style={[styles.taskTitle, titleColorStyle]}
-            onLayout={(e) => setTitleWidth(e.nativeEvent.layout.width)}
-          >
-            {task.title}
-          </Animated.Text>
-          <Animated.View style={[styles.strikeBar, strikeStyle]} pointerEvents="none" />
-        </View>
-        <View style={styles.taskMeta}>
-          <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{whenText}</Text>
-          <View style={styles.dot} />
-          <Text style={styles.source}>{sourceText}</Text>
-        </View>
-      </Animated.View>
-    </GestureDetector>
+    <Animated.View
+      style={[styles.taskWrap, !last && styles.taskWrapBorder]}
+      layout={LinearTransition.duration(260)}
+      exiting={FadeOut.duration(180)}
+    >
+      {/* Hint backdrop — visible only when the row drags away from rest. */}
+      <View style={styles.hints} pointerEvents="none">
+        <Text style={styles.hintDone}>done</Text>
+        <Text style={styles.hintPostpone}>postpone</Text>
+      </View>
+
+      <GestureDetector gesture={gesture}>
+        <Animated.View style={[styles.task, rowStyle]}>
+          <View style={styles.titleWrap}>
+            <Text style={styles.taskTitle}>{task.title}</Text>
+          </View>
+          <View style={styles.taskMeta}>
+            <Text style={[styles.taskWhen, task.urgent && styles.taskWhenUrgent]}>{whenText}</Text>
+            <View style={styles.dot} />
+            <Text style={styles.source}>{sourceText}</Text>
+          </View>
+        </Animated.View>
+      </GestureDetector>
+    </Animated.View>
   );
 }
 
@@ -457,16 +443,43 @@ const styles = StyleSheet.create({
     letterSpacing: 2.4,
     color: colors.muted,
   },
-  task: {
-    paddingVertical: 18,
+  taskWrap: {
+    position: 'relative',
   },
-  taskBorder: {
+  taskWrapBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.hairline,
   },
+  hints: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  hintDone: {
+    fontFamily: fonts.sans.semibold,
+    fontSize: 11,
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+    color: colors.done,
+  },
+  hintPostpone: {
+    fontFamily: fonts.sans.semibold,
+    fontSize: 11,
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+    color: colors.accentSoft,
+  },
+  task: {
+    paddingVertical: 18,
+    backgroundColor: colors.paper,
+  },
   titleWrap: {
-    alignSelf: 'flex-start',
-    position: 'relative',
     marginBottom: 8,
   },
   taskTitle: {
@@ -475,13 +488,6 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     letterSpacing: -0.1,
     color: colors.ink,
-  },
-  strikeBar: {
-    position: 'absolute',
-    top: 11,
-    left: 0,
-    height: 1,
-    backgroundColor: colors.done,
   },
   taskMeta: {
     flexDirection: 'row',
