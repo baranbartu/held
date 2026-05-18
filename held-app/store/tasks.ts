@@ -5,7 +5,9 @@ import {
   isTomorrow as fnsIsTomorrow,
   subDays,
 } from 'date-fns';
+import { createMMKV } from 'react-native-mmkv';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type TaskCategory = 'today' | 'this-week' | 'later';
 
@@ -119,71 +121,107 @@ function initialTasks(): Task[] {
 // re-render on its (non-reactive) changes.
 let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export const useTasks = create<TasksState>((set, get) => ({
-  tasks: initialTasks(),
-  pendingDismissId: null,
+// One MMKV instance for the tasks store. Versioned `id` so we can wipe cleanly
+// later if the persisted shape changes in an incompatible way.
+const mmkv = createMMKV({ id: 'held-tasks-v1' });
 
-  add: (title, deadline) =>
-    set((state) => {
-      const trimmed = title.trim();
-      if (!trimmed) return state;
-      const task: Task = {
-        id: newId(),
-        title: trimmed,
-        deadline,
-        addedAt: new Date(),
-        source: 'you',
-        category: categorize(deadline),
-      };
-      return { tasks: [task, ...state.tasks] };
-    }),
-
-  postpone: (id, deadline) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === id
-          ? { ...t, deadline, category: categorize(deadline) }
-          : t
-      ),
-    })),
-
-  dismiss: (id) => {
-    // Finalize any previous pending dismiss before queuing the new one.
-    if (pendingTimeout) {
-      clearTimeout(pendingTimeout);
-      pendingTimeout = null;
-      const prevId = get().pendingDismissId;
-      if (prevId && prevId !== id) {
-        set((s) => ({ tasks: s.tasks.filter((t) => t.id !== prevId) }));
-      }
-    }
-
-    set((s) => ({
-      tasks: s.tasks.map((t) => (t.id === id ? { ...t, dismissed: true } : t)),
-      pendingDismissId: id,
-    }));
-
-    pendingTimeout = setTimeout(() => {
-      pendingTimeout = null;
-      set((s) => ({
-        tasks: s.tasks.filter((t) => t.id !== id),
-        pendingDismissId: s.pendingDismissId === id ? null : s.pendingDismissId,
-      }));
-    }, UNDO_WINDOW_MS);
+const mmkvStorage = {
+  getItem: (name: string) => mmkv.getString(name) ?? null,
+  setItem: (name: string, value: string) => {
+    mmkv.set(name, value);
   },
+  removeItem: (name: string) => {
+    mmkv.remove(name);
+  },
+};
 
-  undo: () => {
-    if (pendingTimeout) {
-      clearTimeout(pendingTimeout);
-      pendingTimeout = null;
-    }
-    set((s) => ({
-      tasks: s.tasks.map((t) =>
-        t.id === s.pendingDismissId ? { ...t, dismissed: false } : t
-      ),
+// JSON reviver: turn ISO date strings back into Date objects on hydration.
+// JSON.stringify uses Date#toJSON() which emits an ISO string; the reviver runs
+// per key/value pair during parse and we restore the type for our two date
+// fields. Cheap and explicit — adding a new Date field means adding it here.
+const reviver = (key: string, value: unknown): unknown => {
+  if ((key === 'deadline' || key === 'addedAt') && typeof value === 'string') {
+    return new Date(value);
+  }
+  return value;
+};
+
+export const useTasks = create<TasksState>()(
+  persist(
+    (set, get) => ({
+      tasks: initialTasks(),
       pendingDismissId: null,
-    }));
-  },
-}));
+
+      add: (title, deadline) =>
+        set((state) => {
+          const trimmed = title.trim();
+          if (!trimmed) return state;
+          const task: Task = {
+            id: newId(),
+            title: trimmed,
+            deadline,
+            addedAt: new Date(),
+            source: 'you',
+            category: categorize(deadline),
+          };
+          return { tasks: [task, ...state.tasks] };
+        }),
+
+      postpone: (id, deadline) =>
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id ? { ...t, deadline, category: categorize(deadline) } : t
+          ),
+        })),
+
+      dismiss: (id) => {
+        // Finalize any previous pending dismiss before queuing the new one.
+        if (pendingTimeout) {
+          clearTimeout(pendingTimeout);
+          pendingTimeout = null;
+          const prevId = get().pendingDismissId;
+          if (prevId && prevId !== id) {
+            set((s) => ({ tasks: s.tasks.filter((t) => t.id !== prevId) }));
+          }
+        }
+
+        set((s) => ({
+          tasks: s.tasks.map((t) => (t.id === id ? { ...t, dismissed: true } : t)),
+          pendingDismissId: id,
+        }));
+
+        pendingTimeout = setTimeout(() => {
+          pendingTimeout = null;
+          set((s) => ({
+            tasks: s.tasks.filter((t) => t.id !== id),
+            pendingDismissId: s.pendingDismissId === id ? null : s.pendingDismissId,
+          }));
+        }, UNDO_WINDOW_MS);
+      },
+
+      undo: () => {
+        if (pendingTimeout) {
+          clearTimeout(pendingTimeout);
+          pendingTimeout = null;
+        }
+        set((s) => ({
+          tasks: s.tasks.map((t) =>
+            t.id === s.pendingDismissId ? { ...t, dismissed: false } : t
+          ),
+          pendingDismissId: null,
+        }));
+      },
+    }),
+    {
+      name: 'tasks',
+      storage: createJSONStorage(() => mmkvStorage, { reviver }),
+      // Only persist the task list. `pendingDismissId` is a transient UI hint
+      // that doesn't survive cold launches by design — restarting the app
+      // finalizes any in-flight dismiss.
+      partialize: (state) => ({ tasks: state.tasks }),
+      version: 1,
+    }
+  )
+);
 
 export const UNDO_WINDOW_SECONDS = UNDO_WINDOW_MS / 1000;
